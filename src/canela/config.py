@@ -26,8 +26,6 @@ class StreamConfig:
 
 @dataclass(slots=True)
 class MotionConfig:
-    delta_threshold: float = 20.0
-    motion_ratio_threshold: float = 0.02
     cooldown_seconds: float = 10.0
     warmup_frames: int = 30
     mog2_history: int = 300
@@ -98,10 +96,6 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
     motion_data = settings.get("motion") or {}
     motion_defaults = MotionConfig()
     motion = MotionConfig(
-        delta_threshold=float(motion_data.get("delta_threshold", motion_defaults.delta_threshold)),
-        motion_ratio_threshold=float(
-            motion_data.get("motion_ratio_threshold", motion_defaults.motion_ratio_threshold)
-        ),
         cooldown_seconds=float(motion_data.get("cooldown_seconds", motion_defaults.cooldown_seconds)),
         warmup_frames=int(motion_data.get("warmup_frames", motion_defaults.warmup_frames)),
         mog2_history=int(motion_data.get("mog2_history", motion_defaults.mog2_history)),

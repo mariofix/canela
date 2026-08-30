@@ -30,10 +30,11 @@ fps = 5
   source = "rtsp://127.0.0.1:558/low"
 
 [default.motion]
-delta_threshold = 20
-motion_ratio_threshold = 0.02
 cooldown_seconds = 10
 warmup_frames = 30
+mog2_history = 300
+mog2_var_threshold = 32
+min_contour_area = 500
 
 [default.evidence]
 root_dir = "evidence"

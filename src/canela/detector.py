@@ -236,7 +236,6 @@ def _detect_motion_mog2(
         scale_y = high_h / detect_h
 
         mask = feed.subtractor.apply(detect_frame)
-        _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
         mask = cv2.GaussianBlur(mask, (5, 5), 0)
         _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
 
