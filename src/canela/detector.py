@@ -148,7 +148,7 @@ class MotionDetectorService:
                     continue
 
                 last_detection_at = now
-                trigger_source = triggered_resolution.source or primary_feed.source or stream.source
+                trigger_source = triggered_resolution.source or stream.source or primary_feed.source
                 logger.info(
                     "🚨 Motion detected on stream '%s' (source=%s, score=%.4f).",
                     stream.name,
