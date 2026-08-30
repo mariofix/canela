@@ -30,14 +30,21 @@ class AudioDetector(StreamDetector):
     def open(self):
         cmd = [
             "ffmpeg",
-            "-rtsp_transport", "tcp",
-            "-i", self.cfg.rtsp_url,
+            "-rtsp_transport",
+            "tcp",
+            "-i",
+            self.cfg.rtsp_url,
             "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", str(AUDIO_SAMPLE_RATE),
-            "-ac", "1",
-            "-f", "s16le",
-            "-loglevel", "error",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            str(AUDIO_SAMPLE_RATE),
+            "-ac",
+            "1",
+            "-f",
+            "s16le",
+            "-loglevel",
+            "error",
             "pipe:1",
         ]
         return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -58,7 +65,7 @@ class AudioDetector(StreamDetector):
 
     def detect(self, raw):
         samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
-        rms = float(np.sqrt(np.mean(samples ** 2)))
+        rms = float(np.sqrt(np.mean(samples**2)))
 
         if rms >= self.cfg.audio_rms_threshold:
             return AudioResult(rms=rms)

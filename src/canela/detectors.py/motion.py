@@ -91,12 +91,14 @@ class MotionDetector(StreamDetector):
 
             # Get bounding box on the low-res detection frame, scale to high-res
             x, y, w, h = cv2.boundingRect(contour)
-            boxes.append((
-                int(x * scale_x),
-                int(y * scale_y),
-                int(w * scale_x),
-                int(h * scale_y),
-            ))
+            boxes.append(
+                (
+                    int(x * scale_x),
+                    int(y * scale_y),
+                    int(w * scale_x),
+                    int(h * scale_y),
+                )
+            )
 
         result = MotionResult(boxes=boxes, scale_x=scale_x, prev_frame=self.prev_frame) if boxes else None
 
@@ -110,10 +112,13 @@ class MotionDetector(StreamDetector):
 
         # 2. The high-res motion detected image with scaled squares
         frame_with_box = frame.copy()
-        for (hx, hy, hw, hh) in result.boxes:
+        for hx, hy, hw, hh in result.boxes:
             cv2.rectangle(
-                frame_with_box, (hx, hy), (hx + hw, hy + hh),
-                (0, 255, 0), max(2, int(2 * result.scale_x)),
+                frame_with_box,
+                (hx, hy),
+                (hx + hw, hy + hh),
+                (0, 255, 0),
+                max(2, int(2 * result.scale_x)),
             )
         cv2.imwrite(os.path.join(self.cfg.save_dir, f"{timestamp}_2_box.jpg"), frame_with_box)
 

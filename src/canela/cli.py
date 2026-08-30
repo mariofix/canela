@@ -49,14 +49,12 @@ def main():
     stream_configs = build_stream_configs(args)
     detectors = build_detectors(stream_configs)
 
-    threads = [
-        threading.Thread(target=d.run, name=d.label, daemon=True)
-        for d in detectors
-    ]
+    threads = [threading.Thread(target=d.run, name=d.label, daemon=True) for d in detectors]
 
     logging.info(
         "detector started with %d worker(s): %s",
-        len(threads), ", ".join(t.name for t in threads),
+        len(threads),
+        ", ".join(t.name for t in threads),
     )
 
     for t in threads:

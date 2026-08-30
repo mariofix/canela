@@ -288,9 +288,7 @@ def _is_in_warmup(processed_frames: int, warmup_frames: int) -> bool:
 def _resolve_feed_source(stream: StreamConfig, resolution: Resolution) -> str:
     source = resolution.source or stream.source
     if not source:
-        raise ValueError(
-            f"Stream '{stream.name}' requires either stream.source or resolutions[*].source"
-        )
+        raise ValueError(f"Stream '{stream.name}' requires either stream.source or resolutions[*].source")
     return source
 
 
