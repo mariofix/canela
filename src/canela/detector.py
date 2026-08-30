@@ -82,10 +82,7 @@ class MotionDetectorService:
                         stream.fps,
                     )
 
-                primary_feed = feeds[0]
-
                 detection_frames: list[tuple[DetectionFeed, np.ndarray]] = []
-                primary_frame: np.ndarray | None = None
                 read_failed = False
                 for feed in feeds:
                     ok, frame = feed.capture.read()
@@ -93,11 +90,9 @@ class MotionDetectorService:
                         logger.debug("No frame from stream '%s' feed '%s'.", stream.name, feed.source)
                         read_failed = True
                         break
-                    if feed is primary_feed:
-                        primary_frame = frame
                     detection_frames.append((feed, frame))
 
-                if read_failed or primary_frame is None:
+                if read_failed or not detection_frames:
                     retry_delay = stream.reconnect_backoff_seconds
                     logger.warning(
                         "Primary feed unavailable for stream '%s'; reconnecting in %.1f seconds.",
@@ -110,6 +105,7 @@ class MotionDetectorService:
                     await asyncio.sleep(retry_delay)
                     continue
 
+                primary_feed, primary_frame = _select_primary_feed(detection_frames)
                 now = datetime.now(UTC)
                 pre_buffer.append(FrameSample(timestamp=now, frame=primary_frame.copy()))
                 processed_frames += 1
@@ -118,6 +114,7 @@ class MotionDetectorService:
                     detection_frames,
                     motion_cfg.min_contour_area,
                     cv2,
+                    primary_shape=primary_frame.shape[:2],
                 )
 
                 if _is_in_warmup(processed_frames, motion_cfg.warmup_frames):
@@ -217,6 +214,7 @@ def _detect_motion_mog2(
     detection_frames: list[tuple[DetectionFeed, np.ndarray]],
     min_contour_area: int,
     cv2: Any,
+    primary_shape: tuple[int, int] | None = None,
 ) -> tuple[Resolution | None, float, list[tuple[int, int, int, int]]]:
     """Apply MOG2 background subtraction on each detection feed.
 
@@ -231,9 +229,12 @@ def _detect_motion_mog2(
             detect_frame = frame
 
         detect_h, detect_w = detect_frame.shape[:2]
-        high_h, high_w = frame.shape[:2]
-        scale_x = high_w / detect_w
-        scale_y = high_h / detect_h
+        if primary_shape is None:
+            primary_h, primary_w = frame.shape[:2]
+        else:
+            primary_h, primary_w = primary_shape
+        scale_x = primary_w / detect_w
+        scale_y = primary_h / detect_h
 
         mask = feed.subtractor.apply(detect_frame)
         _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
@@ -261,6 +262,19 @@ def _detect_motion_mog2(
             return resolution, ratio, motion_boxes
 
     return None, 0.0, []
+
+
+def _select_primary_feed(
+    detection_frames: list[tuple[DetectionFeed, np.ndarray]],
+) -> tuple[DetectionFeed, np.ndarray]:
+    return max(
+        detection_frames,
+        key=lambda item: (
+            item[1].shape[0] * item[1].shape[1],
+            item[1].shape[1],
+            item[1].shape[0],
+        ),
+    )
 
 
 def _parse_source(source: str) -> str | int:

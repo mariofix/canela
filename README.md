@@ -4,6 +4,7 @@ Private Security System for the Homestead
 ## Features
 - Motion detection across multiple streams
 - Multiple resolutions per stream for detection checks
+- Evidence snapshots/clips always use the highest-resolution feed available for the stream
 - On motion, evidence folder with:
   - `motion.json` metadata
   - `snapshot.jpg`
