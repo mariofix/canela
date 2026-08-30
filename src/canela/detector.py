@@ -38,6 +38,7 @@ class MotionDetectorService:
     async def run(self) -> None:
         if not self._config.streams:
             raise ValueError("No streams configured")
+        logger.info("Starting motion detector service for %d stream(s).", len(self._config.streams))
         pipeline = AlertPipeline(self._config.alerts)
         tasks = [
             asyncio.create_task(self._run_stream(stream, pipeline), name=f"stream:{stream.name}")
@@ -49,6 +50,12 @@ class MotionDetectorService:
         cv2 = import_cv2()
         feeds = _open_detection_feeds(stream, cv2)
         primary_feed = feeds[0]
+        logger.info(
+            "Stream '%s' online with %d feed(s) at %.2f fps.",
+            stream.name,
+            len(feeds),
+            stream.fps,
+        )
 
         frame_interval = 1.0 / max(stream.fps, 0.1)
         max_pre_frames = max(1, int(stream.fps * self._config.evidence.pre_seconds))
@@ -62,6 +69,7 @@ class MotionDetectorService:
         last_detection_at: datetime | None = None
         previous_frames: dict[tuple[str, int, int], np.ndarray] = {}
         processed_frames = 0
+        warmup_complete_logged = False
 
         try:
             while True:
@@ -70,12 +78,14 @@ class MotionDetectorService:
                 for feed in feeds:
                     ok, frame = feed.capture.read()
                     if not ok:
+                        logger.debug("No frame from stream '%s' feed '%s'.", stream.name, feed.source)
                         continue
                     if feed is primary_feed:
                         primary_frame = frame
                     detection_frames.append((feed, frame))
 
                 if primary_frame is None:
+                    logger.debug("Primary feed unavailable for stream '%s'; retrying.", stream.name)
                     await asyncio.sleep(frame_interval)
                     continue
 
@@ -91,17 +101,38 @@ class MotionDetectorService:
                     cv2,
                 )
                 if _is_in_warmup(processed_frames, self._config.motion.warmup_frames):
+                    logger.debug(
+                        "Warm-up stream '%s': frame %d/%d.",
+                        stream.name,
+                        processed_frames,
+                        max(0, self._config.motion.warmup_frames),
+                    )
                     await asyncio.sleep(frame_interval)
                     continue
+                if not warmup_complete_logged:
+                    logger.info(
+                        "Stream '%s' warm-up complete after %d frame(s). Motion alerts are now active.",
+                        stream.name,
+                        max(0, self._config.motion.warmup_frames),
+                    )
+                    warmup_complete_logged = True
                 if not triggered_resolution:
                     await asyncio.sleep(frame_interval)
                     continue
 
                 if last_detection_at and now - last_detection_at < timedelta(seconds=self._config.motion.cooldown_seconds):
+                    logger.debug("Stream '%s' is in cooldown; motion trigger suppressed.", stream.name)
                     await asyncio.sleep(frame_interval)
                     continue
 
                 last_detection_at = now
+                trigger_source = triggered_resolution.source or stream.source or primary_feed.source
+                logger.info(
+                    "🚨 Motion detected on stream '%s' (source=%s, score=%.4f).",
+                    stream.name,
+                    trigger_source,
+                    score,
+                )
                 event_frames = [sample.frame for sample in pre_buffer]
                 post_frames = await self._collect_post_frames(primary_feed.capture, frame_interval, stream.fps)
                 event_frames.extend(post_frames)
@@ -110,7 +141,7 @@ class MotionDetectorService:
                     stream_name=stream.name,
                     detected_at=now,
                     metadata={
-                        "trigger_source": triggered_resolution.source or stream.source or "",
+                        "trigger_source": trigger_source,
                         "trigger_resolution": {
                             "width": triggered_resolution.width or primary_frame.shape[1],
                             "height": triggered_resolution.height or primary_frame.shape[0],
@@ -121,6 +152,7 @@ class MotionDetectorService:
                     },
                     frames=event_frames,
                 )
+                logger.info("Evidence captured for stream '%s' at: %s", stream.name, event_dir)
                 payload: dict[str, Any] = {
                     "stream": stream.name,
                     "detected_at": now.isoformat(),
@@ -128,10 +160,12 @@ class MotionDetectorService:
                     "motion_score": score,
                 }
                 await pipeline.run(payload)
+                logger.info("Alert pipeline completed for stream '%s'.", stream.name)
                 await asyncio.sleep(frame_interval)
         finally:
             for feed in feeds:
                 feed.capture.release()
+            logger.info("Stream '%s' stopped.", stream.name)
 
     async def _collect_post_frames(self, capture: Any, frame_interval: float, fps: float) -> list[np.ndarray]:
         post_frame_count = max(0, int(fps * self._config.evidence.post_seconds))

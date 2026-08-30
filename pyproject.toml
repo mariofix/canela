@@ -6,6 +6,9 @@ authors = ["canela contributors"]
 readme = "README.md"
 packages = [{ include = "canela", from = "src" }]
 
+[tool.poetry.scripts]
+canela = "canela.cli:main"
+
 [tool.poetry.dependencies]
 python = "^3.14"
 dynaconf = "^3.2.11"

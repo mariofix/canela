@@ -50,5 +50,11 @@ You can still use legacy single-source configs (`stream.source` + width/height r
 
 ## Run
 ```bash
-python -m canela --settings settings.toml
+poetry run canela --settings settings.toml
+```
+
+For more runtime details, increase verbosity:
+
+```bash
+poetry run canela --settings settings.toml --log-level DEBUG
 ```
