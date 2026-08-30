@@ -85,8 +85,13 @@ class MotionDetectorService:
                     detection_frames.append((feed, frame))
 
                 if primary_frame is None:
-                    logger.debug("Primary feed unavailable for stream '%s'; retrying.", stream.name)
-                    await asyncio.sleep(frame_interval)
+                    retry_delay = stream.reconnect_backoff_seconds
+                    logger.debug(
+                        "Primary feed unavailable for stream '%s'; retrying in %.1f seconds.",
+                        stream.name,
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
                     continue
 
                 now = datetime.now(UTC)

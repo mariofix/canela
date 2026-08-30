@@ -48,6 +48,19 @@ async = true
 
 You can still use legacy single-source configs (`stream.source` + width/height resolutions); when `resolutions[*].source` is present, each resolution is read from its own RTSP endpoint.
 
+## Telegram alert example
+
+To notify a Telegram chat with the motion snapshot and detection metadata, add an alert step that calls the bundled helper:
+
+```toml
+[[default.alerts]]
+run = "canela.telegram_alert::send_telegram_alert"
+async = false
+args = { chat_id = "123456789", token = "<BOT_TOKEN>" }
+```
+
+You can also omit `chat_id` and `token` from `args` and set `TELEGRAM_CHAT_ID` / `TELEGRAM_BOT_TOKEN` in the environment instead.
+
 ## Run
 ```bash
 poetry run canela --settings settings.toml

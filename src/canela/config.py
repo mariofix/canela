@@ -20,6 +20,7 @@ class StreamConfig:
     name: str
     source: str | None = None
     fps: float = 5.0
+    reconnect_backoff_seconds: float = 5.0
     resolutions: list[Resolution] = field(default_factory=lambda: [Resolution(width=640, height=360)])
 
 
@@ -78,9 +79,18 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
         source_value = item.get("source")
         source = str(source_value) if source_value is not None else None
         fps = float(item.get("fps", 5.0))
+        reconnect_backoff_seconds = float(item.get("reconnect_backoff_seconds", 5.0))
         raw_resolutions = item.get("resolutions") or [{"width": 640, "height": 360}]
         resolutions = [_as_resolution(entry) for entry in raw_resolutions]
-        streams.append(StreamConfig(name=name, source=source, fps=fps, resolutions=resolutions))
+        streams.append(
+            StreamConfig(
+                name=name,
+                source=source,
+                fps=fps,
+                reconnect_backoff_seconds=reconnect_backoff_seconds,
+                resolutions=resolutions,
+            )
+        )
 
     motion_data = settings.get("motion") or {}
     motion_defaults = MotionConfig()
