@@ -3,7 +3,14 @@ from __future__ import annotations
 import numpy as np
 
 from canela.config import Resolution, StreamConfig
-from canela.detector import DetectionFeed, _detect_motion_mog2, _is_in_warmup, _parse_source, _resolve_feed_source
+from canela.detector import (
+    DetectionFeed,
+    _detect_motion_mog2,
+    _is_in_warmup,
+    _parse_source,
+    _resolve_feed_source,
+    _select_primary_feed,
+)
 
 
 class _FakeSubtractor:
@@ -79,6 +86,27 @@ def test_detect_motion_mog2_returns_motion_when_contours_exceed_min_area() -> No
     assert len(boxes) > 0
 
 
+def test_detect_motion_mog2_scales_boxes_to_primary_shape() -> None:
+    frame = np.full((180, 320, 3), 128, dtype=np.uint8)
+    feed = DetectionFeed(
+        resolution=Resolution(width=320, height=180),
+        source="rtsp://a",
+        capture=None,
+        subtractor=_FakeSubtractor(),
+    )
+
+    resolution, score, boxes = _detect_motion_mog2(
+        [(feed, frame)],
+        min_contour_area=1,
+        cv2=_FakeCv2,
+        primary_shape=(360, 640),
+    )
+
+    assert resolution == Resolution(width=320, height=180)
+    assert score > 0
+    assert boxes == [(0, 0, 640, 360)]
+
+
 def test_detect_motion_mog2_skips_small_contours() -> None:
     frame = np.full((360, 640, 3), 128, dtype=np.uint8)
     feed = DetectionFeed(
@@ -109,3 +137,15 @@ def test_warmup_frame_gate() -> None:
 def test_resolve_feed_source_supports_per_resolution_sources() -> None:
     stream = StreamConfig(name="camera-a", source=None, resolutions=[Resolution(source="rtsp://127.0.0.1:554/s1")])
     assert _resolve_feed_source(stream, stream.resolutions[0]) == "rtsp://127.0.0.1:554/s1"
+
+
+def test_select_primary_feed_prefers_highest_resolution_frame() -> None:
+    high_feed = DetectionFeed(resolution=Resolution(name="high"), source="rtsp://high", capture=None)
+    low_feed = DetectionFeed(resolution=Resolution(name="low"), source="rtsp://low", capture=None)
+    low_frame = np.zeros((180, 320, 3), dtype=np.uint8)
+    high_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+    primary_feed, primary_frame = _select_primary_feed([(low_feed, low_frame), (high_feed, high_frame)])
+
+    assert primary_feed is high_feed
+    assert primary_frame is high_frame
