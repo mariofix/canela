@@ -49,29 +49,29 @@ class MotionDetectorService:
     async def _run_stream(self, stream: StreamConfig, pipeline: AlertPipeline) -> None:
         cv2 = import_cv2()
         feeds = _open_detection_feeds(stream, cv2)
-        primary_feed = feeds[0]
-        logger.info(
-            "Stream '%s' online with %d feed(s) at %.2f fps.",
-            stream.name,
-            len(feeds),
-            stream.fps,
-        )
-
-        frame_interval = 1.0 / max(stream.fps, 0.1)
-        max_pre_frames = max(1, int(stream.fps * self._config.evidence.pre_seconds))
-        pre_buffer: deque[FrameSample] = deque(maxlen=max_pre_frames)
-
-        evidence_writer = EvidenceWriter(
-            root_dir=self._resolve_root_dir(),
-            output_fps=self._config.evidence.output_fps,
-        )
-
-        last_detection_at: datetime | None = None
-        previous_frames: dict[tuple[str, int, int], np.ndarray] = {}
-        processed_frames = 0
-        warmup_complete_logged = False
-
         try:
+            primary_feed = feeds[0]
+            logger.info(
+                "Stream '%s' online with %d feed(s) at %.2f fps.",
+                stream.name,
+                len(feeds),
+                stream.fps,
+            )
+
+            frame_interval = 1.0 / max(stream.fps, 0.1)
+            max_pre_frames = max(1, int(stream.fps * self._config.evidence.pre_seconds))
+            pre_buffer: deque[FrameSample] = deque(maxlen=max_pre_frames)
+
+            evidence_writer = EvidenceWriter(
+                root_dir=self._resolve_root_dir(),
+                output_fps=self._config.evidence.output_fps,
+            )
+
+            last_detection_at: datetime | None = None
+            previous_frames: dict[tuple[str, int, int], np.ndarray] = {}
+            processed_frames = 0
+            warmup_complete_logged = False
+
             while True:
                 detection_frames: list[tuple[DetectionFeed, np.ndarray]] = []
                 primary_frame: np.ndarray | None = None
@@ -230,6 +230,8 @@ def _resolve_feed_source(stream: StreamConfig, resolution: Resolution) -> str:
 
 
 def _open_detection_feeds(stream: StreamConfig, cv2: Any) -> list[DetectionFeed]:
+    if not stream.resolutions:
+        raise ValueError(f"Stream '{stream.name}' has no configured resolutions/feeds")
     feeds: list[DetectionFeed] = []
     for resolution in stream.resolutions:
         source = _resolve_feed_source(stream, resolution)
