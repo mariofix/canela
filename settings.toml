@@ -1,0 +1,49 @@
+[default]
+
+[[default.streams]]
+name = "camera-model-a"
+fps = 5
+
+  [[default.streams.resolutions]]
+  name = "high"
+  source = "rtsp://127.0.0.1:554/s0"
+
+  [[default.streams.resolutions]]
+  name = "mid"
+  source = "rtsp://127.0.0.1:554/s2"
+
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:554/s1"
+
+[[default.streams]]
+name = "camera-model-b"
+fps = 5
+
+  [[default.streams.resolutions]]
+  name = "high"
+  source = "rtsp://127.0.0.1:558/high"
+
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:558/low"
+
+[default.motion]
+delta_threshold = 20
+motion_ratio_threshold = 0.02
+cooldown_seconds = 10
+warmup_frames = 30
+
+[default.evidence]
+root_dir = "evidence"
+pre_seconds = 5
+post_seconds = 5
+output_fps = 10
+
+[[default.alerts]]
+run = "canela.sample_handlers::print_alert"
+async = false
+
+[[default.alerts]]
+run = "echo Motion detected at $CANELA_ALERT_PAYLOAD"
+async = true
