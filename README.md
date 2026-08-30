@@ -10,7 +10,7 @@ Private Security System for the Homestead
   - `clip.mp4` containing configurable pre/post seconds
 - Configurable alert pipeline with sequential and async steps
   - Python callables (`module.path::function`)
-  - Arbitrary Linux shell commands
+  - Arbitrary Linux shell commands (trusted operator-managed configuration)
 
 ## Configuration
 Uses Dynaconf with `settings.toml` by default.

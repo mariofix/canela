@@ -56,7 +56,7 @@ async def _run_shell_command(command: str, payload: dict[str, Any], args: dict[s
     )
     stdout, stderr = await process.communicate()
     if process.returncode != 0:
-        logger.error("alert command failed (%s): %s", process.returncode, stderr.decode().strip())
-        return
+        error_output = stderr.decode().strip()
+        raise RuntimeError(f"alert command failed ({process.returncode}): {error_output}")
     if stdout:
         logger.info("alert command output: %s", stdout.decode().strip())

@@ -38,6 +38,14 @@ async def test_alert_pipeline_executes_shell_command(tmp_path: Path) -> None:
     assert json.loads(marker.read_text(encoding="utf-8")) == {"ok": True}
 
 
+@pytest.mark.asyncio
+async def test_alert_pipeline_raises_on_failing_shell_command() -> None:
+    pipeline = AlertPipeline([AlertStep(run="exit 7")])
+
+    with pytest.raises(RuntimeError, match="alert command failed"):
+        await pipeline.run({"ok": True})
+
+
 def test_load_config_with_multiple_resolutions_and_alerts(tmp_path: Path) -> None:
     settings = tmp_path / "settings.toml"
     settings.write_text(

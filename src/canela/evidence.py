@@ -24,7 +24,8 @@ class EvidenceWriter:
         metadata: dict[str, Any],
         frames: list[np.ndarray],
     ) -> Path:
-        event_id = detected_at.strftime("%Y%m%dT%H%M%S.%fZ")
+        detected_at_utc = detected_at.astimezone(UTC)
+        event_id = detected_at_utc.strftime("%Y%m%dT%H%M%S.%fZ")
         event_dir = self._root_dir / stream_name / event_id
         event_dir.mkdir(parents=True, exist_ok=True)
 
@@ -39,7 +40,7 @@ class EvidenceWriter:
 
         motion_data = {
             "stream": stream_name,
-            "detected_at": detected_at.astimezone(UTC).isoformat(),
+            "detected_at": detected_at_utc.isoformat(),
             "snapshot": str(snapshot_path),
             "clip": str(clip_path),
             **metadata,

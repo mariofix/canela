@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -121,7 +122,7 @@ class MotionDetectorService:
             await asyncio.sleep(frame_interval)
         return post_frames
 
-    def _resolve_root_dir(self):
+    def _resolve_root_dir(self) -> Path:
         from .config import resolve_root
 
         return resolve_root(self._config.evidence.root_dir)
