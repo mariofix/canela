@@ -65,9 +65,11 @@ def _resolve_image_path(payload: dict[str, Any], photo_path: str | None) -> Path
 
     event_dir = payload.get("event_dir")
     if isinstance(event_dir, str):
-        candidate = Path(event_dir) / "snapshot.jpg"
-        if candidate.exists():
-            return candidate
+        # Prefer the annotated snapshot with detection boxes
+        for name in ("2_box.jpg", "snapshot.jpg"):
+            candidate = Path(event_dir) / name
+            if candidate.exists():
+                return candidate
 
     motion_path = payload.get("snapshot")
     if isinstance(motion_path, str):

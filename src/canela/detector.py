@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -29,6 +29,7 @@ class DetectionFeed:
     resolution: Resolution
     source: str
     capture: Any
+    subtractor: Any = field(default=None)
 
 
 class MotionDetectorService:
@@ -48,16 +49,11 @@ class MotionDetectorService:
 
     async def _run_stream(self, stream: StreamConfig, pipeline: AlertPipeline) -> None:
         cv2 = import_cv2()
-        feeds = _open_detection_feeds(stream, cv2)
-        try:
-            primary_feed = feeds[0]
-            logger.info(
-                "Stream '%s' online with %d feed(s) at %.2f fps.",
-                stream.name,
-                len(feeds),
-                stream.fps,
-            )
+        motion_cfg = self._config.motion
 
+        feeds: list[DetectionFeed] | None = None
+
+        try:
             frame_interval = 1.0 / max(stream.fps, 0.1)
             max_pre_frames = max(1, int(stream.fps * self._config.evidence.pre_seconds))
             pre_buffer: deque[FrameSample] = deque(maxlen=max_pre_frames)
@@ -68,29 +64,49 @@ class MotionDetectorService:
             )
 
             last_detection_at: datetime | None = None
-            previous_frames: dict[tuple[str, int, int], np.ndarray] = {}
+            prev_primary_frame: np.ndarray | None = None
             processed_frames = 0
             warmup_complete_logged = False
 
             while True:
+                # (Re)open feeds if needed
+                if feeds is None:
+                    logger.info("Stream '%s': (re)opening feeds.", stream.name)
+                    feeds = _open_detection_feeds(stream, cv2, motion_cfg)
+                    processed_frames = 0
+                    warmup_complete_logged = False
+                    logger.info(
+                        "Stream '%s' online with %d feed(s) at %.2f fps.",
+                        stream.name,
+                        len(feeds),
+                        stream.fps,
+                    )
+
+                primary_feed = feeds[0]
+
                 detection_frames: list[tuple[DetectionFeed, np.ndarray]] = []
                 primary_frame: np.ndarray | None = None
+                read_failed = False
                 for feed in feeds:
                     ok, frame = feed.capture.read()
                     if not ok:
                         logger.debug("No frame from stream '%s' feed '%s'.", stream.name, feed.source)
-                        continue
+                        read_failed = True
+                        break
                     if feed is primary_feed:
                         primary_frame = frame
                     detection_frames.append((feed, frame))
 
-                if primary_frame is None:
+                if read_failed or primary_frame is None:
                     retry_delay = stream.reconnect_backoff_seconds
-                    logger.debug(
-                        "Primary feed unavailable for stream '%s'; retrying in %.1f seconds.",
+                    logger.warning(
+                        "Primary feed unavailable for stream '%s'; reconnecting in %.1f seconds.",
                         stream.name,
                         retry_delay,
                     )
+                    for feed in feeds:
+                        feed.capture.release()
+                    feeds = None
                     await asyncio.sleep(retry_delay)
                     continue
 
@@ -98,35 +114,39 @@ class MotionDetectorService:
                 pre_buffer.append(FrameSample(timestamp=now, frame=primary_frame.copy()))
                 processed_frames += 1
 
-                triggered_resolution, score = _detect_motion(
+                triggered_resolution, score, motion_boxes = _detect_motion_mog2(
                     detection_frames,
-                    previous_frames,
-                    self._config.motion.delta_threshold,
-                    self._config.motion.motion_ratio_threshold,
+                    motion_cfg.min_contour_area,
                     cv2,
                 )
-                if _is_in_warmup(processed_frames, self._config.motion.warmup_frames):
+
+                if _is_in_warmup(processed_frames, motion_cfg.warmup_frames):
                     logger.debug(
                         "Warm-up stream '%s': frame %d/%d.",
                         stream.name,
                         processed_frames,
-                        max(0, self._config.motion.warmup_frames),
+                        max(0, motion_cfg.warmup_frames),
                     )
+                    prev_primary_frame = primary_frame.copy()
                     await asyncio.sleep(frame_interval)
                     continue
+
                 if not warmup_complete_logged:
                     logger.info(
                         "Stream '%s' warm-up complete after %d frame(s). Motion alerts are now active.",
                         stream.name,
-                        max(0, self._config.motion.warmup_frames),
+                        max(0, motion_cfg.warmup_frames),
                     )
                     warmup_complete_logged = True
+
                 if not triggered_resolution:
+                    prev_primary_frame = primary_frame.copy()
                     await asyncio.sleep(frame_interval)
                     continue
 
-                if last_detection_at and now - last_detection_at < timedelta(seconds=self._config.motion.cooldown_seconds):
+                if last_detection_at and now - last_detection_at < timedelta(seconds=motion_cfg.cooldown_seconds):
                     logger.debug("Stream '%s' is in cooldown; motion trigger suppressed.", stream.name)
+                    prev_primary_frame = primary_frame.copy()
                     await asyncio.sleep(frame_interval)
                     continue
 
@@ -156,6 +176,9 @@ class MotionDetectorService:
                         "post_seconds": self._config.evidence.post_seconds,
                     },
                     frames=event_frames,
+                    detection_frame=primary_frame,
+                    motion_boxes=motion_boxes,
+                    prev_frame=prev_primary_frame,
                 )
                 logger.info("Evidence captured for stream '%s' at: %s", stream.name, event_dir)
                 payload: dict[str, Any] = {
@@ -166,10 +189,12 @@ class MotionDetectorService:
                 }
                 await pipeline.run(payload)
                 logger.info("Alert pipeline completed for stream '%s'.", stream.name)
+                prev_primary_frame = primary_frame.copy()
                 await asyncio.sleep(frame_interval)
         finally:
-            for feed in feeds:
-                feed.capture.release()
+            if feeds is not None:
+                for feed in feeds:
+                    feed.capture.release()
             logger.info("Stream '%s' stopped.", stream.name)
 
     async def _collect_post_frames(self, capture: Any, frame_interval: float, fps: float) -> list[np.ndarray]:
@@ -188,33 +213,53 @@ class MotionDetectorService:
         return resolve_root(self._config.evidence.root_dir)
 
 
-def _detect_motion(
+def _detect_motion_mog2(
     detection_frames: list[tuple[DetectionFeed, np.ndarray]],
-    previous_frames: dict[tuple[str, int, int], np.ndarray],
-    delta_threshold: float,
-    motion_ratio_threshold: float,
+    min_contour_area: int,
     cv2: Any,
-) -> tuple[Resolution | None, float]:
+) -> tuple[Resolution | None, float, list[tuple[int, int, int, int]]]:
+    """Apply MOG2 background subtraction on each detection feed.
+
+    Returns the triggering resolution, a motion score (ratio of changed pixels),
+    and the list of bounding boxes (in primary/high-res frame coordinates).
+    """
     for feed, frame in detection_frames:
         resolution = feed.resolution
         if resolution.width is not None and resolution.height is not None:
-            processed = cv2.resize(frame, (resolution.width, resolution.height))
+            detect_frame = cv2.resize(frame, (resolution.width, resolution.height), interpolation=cv2.INTER_AREA)
         else:
-            processed = frame
-        gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
-        key = (feed.source, gray.shape[1], gray.shape[0])
+            detect_frame = frame
 
-        prev_gray = previous_frames.get(key)
-        previous_frames[key] = gray
-        if prev_gray is None:
-            continue
+        detect_h, detect_w = detect_frame.shape[:2]
+        high_h, high_w = frame.shape[:2]
+        scale_x = high_w / detect_w
+        scale_y = high_h / detect_h
 
-        diff = cv2.absdiff(prev_gray, gray)
-        changed = (diff >= delta_threshold).sum()
-        ratio = float(changed / diff.size)
-        if ratio >= motion_ratio_threshold:
-            return resolution, ratio
-    return None, 0.0
+        mask = feed.subtractor.apply(detect_frame)
+        mask = cv2.GaussianBlur(mask, (5, 5), 0)
+        _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        motion_boxes: list[tuple[int, int, int, int]] = []
+        total_area = 0
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_contour_area:
+                continue
+            total_area += area
+            x, y, w, h = cv2.boundingRect(contour)
+            hx = int(x * scale_x)
+            hy = int(y * scale_y)
+            hw = int(w * scale_x)
+            hh = int(h * scale_y)
+            motion_boxes.append((hx, hy, hw, hh))
+
+        if motion_boxes:
+            ratio = float(total_area / (detect_w * detect_h))
+            return resolution, ratio, motion_boxes
+
+    return None, 0.0, []
 
 
 def _parse_source(source: str) -> str | int:
@@ -234,7 +279,7 @@ def _resolve_feed_source(stream: StreamConfig, resolution: Resolution) -> str:
     return source
 
 
-def _open_detection_feeds(stream: StreamConfig, cv2: Any) -> list[DetectionFeed]:
+def _open_detection_feeds(stream: StreamConfig, cv2: Any, motion_cfg: Any) -> list[DetectionFeed]:
     if not stream.resolutions:
         raise ValueError(f"Stream '{stream.name}' has no configured resolutions/feeds")
     feeds: list[DetectionFeed] = []
@@ -246,5 +291,10 @@ def _open_detection_feeds(stream: StreamConfig, cv2: Any) -> list[DetectionFeed]
             for feed in feeds:
                 feed.capture.release()
             raise RuntimeError(f"Unable to open stream: {stream.name} ({source})")
-        feeds.append(DetectionFeed(resolution=resolution, source=source, capture=capture))
+        subtractor = cv2.createBackgroundSubtractorMOG2(
+            history=motion_cfg.mog2_history,
+            varThreshold=motion_cfg.mog2_var_threshold,
+            detectShadows=False,
+        )
+        feeds.append(DetectionFeed(resolution=resolution, source=source, capture=capture, subtractor=subtractor))
     return feeds
