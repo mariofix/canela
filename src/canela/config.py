@@ -70,18 +70,22 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
         streams.append(StreamConfig(name=name, source=source, fps=fps, resolutions=resolutions))
 
     motion_data = settings.get("motion") or {}
+    motion_defaults = MotionConfig()
     motion = MotionConfig(
-        delta_threshold=float(motion_data.get("delta_threshold", 20.0)),
-        motion_ratio_threshold=float(motion_data.get("motion_ratio_threshold", 0.02)),
-        cooldown_seconds=float(motion_data.get("cooldown_seconds", 10.0)),
+        delta_threshold=float(motion_data.get("delta_threshold", motion_defaults.delta_threshold)),
+        motion_ratio_threshold=float(
+            motion_data.get("motion_ratio_threshold", motion_defaults.motion_ratio_threshold)
+        ),
+        cooldown_seconds=float(motion_data.get("cooldown_seconds", motion_defaults.cooldown_seconds)),
     )
 
     evidence_data = settings.get("evidence") or {}
+    evidence_defaults = EvidenceConfig()
     evidence = EvidenceConfig(
-        root_dir=str(evidence_data.get("root_dir", "evidence")),
-        pre_seconds=float(evidence_data.get("pre_seconds", 5.0)),
-        post_seconds=float(evidence_data.get("post_seconds", 5.0)),
-        output_fps=float(evidence_data.get("output_fps", 10.0)),
+        root_dir=str(evidence_data.get("root_dir", evidence_defaults.root_dir)),
+        pre_seconds=float(evidence_data.get("pre_seconds", evidence_defaults.pre_seconds)),
+        post_seconds=float(evidence_data.get("post_seconds", evidence_defaults.post_seconds)),
+        output_fps=float(evidence_data.get("output_fps", evidence_defaults.output_fps)),
     )
 
     raw_alerts = settings.get("alerts") or []

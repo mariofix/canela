@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from ._cv2 import import_cv2
+
 
 class EvidenceWriter:
     def __init__(self, root_dir: Path, output_fps: float = 10.0):
@@ -46,13 +48,13 @@ class EvidenceWriter:
         return event_dir
 
     def _write_snapshot(self, snapshot_path: Path, frame: np.ndarray) -> None:
-        cv2 = _import_cv2()
+        cv2 = import_cv2()
         ok = cv2.imwrite(str(snapshot_path), frame)
         if not ok:
             raise RuntimeError(f"Failed to write snapshot at {snapshot_path}")
 
     def _write_clip(self, clip_path: Path, frames: list[np.ndarray]) -> None:
-        cv2 = _import_cv2()
+        cv2 = import_cv2()
         first = frames[0]
         height, width = first.shape[:2]
         writer = cv2.VideoWriter(
@@ -66,13 +68,3 @@ class EvidenceWriter:
                 writer.write(frame)
         finally:
             writer.release()
-
-
-def _import_cv2():
-    try:
-        import cv2  # type: ignore
-    except ImportError as exc:  # pragma: no cover - environment specific
-        raise RuntimeError(
-            "OpenCV is required to write evidence files. Install opencv-python-headless."
-        ) from exc
-    return cv2

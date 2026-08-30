@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 
+from ._cv2 import import_cv2
 from .alerts import AlertPipeline
 from .config import AppConfig, Resolution, StreamConfig
 from .evidence import EvidenceWriter
@@ -37,7 +38,7 @@ class MotionDetectorService:
         await asyncio.gather(*tasks)
 
     async def _run_stream(self, stream: StreamConfig, pipeline: AlertPipeline) -> None:
-        cv2 = _import_cv2()
+        cv2 = import_cv2()
         capture = cv2.VideoCapture(_parse_source(stream.source))
         if not capture.isOpened():
             raise RuntimeError(f"Unable to open stream: {stream.name} ({stream.source})")
@@ -150,16 +151,6 @@ def _detect_motion(
         if ratio >= motion_ratio_threshold:
             return resolution, ratio
     return None, 0.0
-
-
-def _import_cv2():
-    try:
-        import cv2  # type: ignore
-    except ImportError as exc:  # pragma: no cover - environment specific
-        raise RuntimeError(
-            "OpenCV is required for motion detection. Install opencv-python-headless."
-        ) from exc
-    return cv2
 
 
 def _parse_source(source: str) -> str | int:
