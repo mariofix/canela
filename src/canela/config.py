@@ -1,132 +1,79 @@
-from __future__ import annotations
+import os
+from dataclasses import dataclass
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
-
+from dotenv import load_dotenv
 from dynaconf import Dynaconf
 
+load_dotenv()
 
-@dataclass(slots=True)
-class Resolution:
-    width: int | None = None
-    height: int | None = None
-    source: str | None = None
-    name: str | None = None
+settings = Dynaconf(
+    envvar_prefix="CANELA",
+    settings_files=["settings.toml"],
+)
 
 
-@dataclass(slots=True)
+@dataclass
 class StreamConfig:
     name: str
-    source: str | None = None
-    fps: float = 5.0
-    reconnect_backoff_seconds: float = 5.0
-    resolutions: list[Resolution] = field(default_factory=lambda: [Resolution(width=640, height=360)])
+    rtsp_url: str
+    save_dir: str
+    detect_width: int
+    detect_height: int
+    min_contour_area: int
+    cooldown: float
+    warmup_frames: int
+    history: int
+    var_threshold: int
+    audio_enabled: bool
+    audio_rms_threshold: float
+    audio_cooldown: float
 
 
-@dataclass(slots=True)
-class MotionConfig:
-    cooldown_seconds: float = 10.0
-    warmup_frames: int = 30
-    mog2_history: int = 300
-    mog2_var_threshold: float = 32.0
-    min_contour_area: int = 500
+def resolve_stream_config(name, rtsp_url, overrides=None):
+    overrides = overrides or {}
 
+    def get(key, default):
+        return overrides.get(key, settings.get(key, default))
 
-@dataclass(slots=True)
-class EvidenceConfig:
-    root_dir: str = "evidence"
-    pre_seconds: float = 5.0
-    post_seconds: float = 5.0
-    output_fps: float = 10.0
-
-
-@dataclass(slots=True)
-class AlertStep:
-    run: str
-    async_step: bool = False
-    args: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class AppConfig:
-    streams: list[StreamConfig]
-    motion: MotionConfig = field(default_factory=MotionConfig)
-    evidence: EvidenceConfig = field(default_factory=EvidenceConfig)
-    alerts: list[AlertStep] = field(default_factory=list)
-
-
-def _as_resolution(value: dict[str, Any]) -> Resolution:
-    width = value.get("width")
-    height = value.get("height")
-    source = value.get("source")
-    name = value.get("name")
-    return Resolution(
-        width=int(width) if width is not None else None,
-        height=int(height) if height is not None else None,
-        source=str(source) if source is not None else None,
-        name=str(name) if name is not None else None,
+    return StreamConfig(
+        name=name,
+        rtsp_url=rtsp_url,
+        save_dir=overrides.get("save_dir", os.path.join(settings.get("save_dir", "motion_captures"), name)),
+        detect_width=get("detect_width", 640),
+        detect_height=get("detect_height", 360),
+        min_contour_area=get("min_contour_area", 500),
+        cooldown=get("cooldown", 5.0),
+        warmup_frames=get("warmup_frames", 30),
+        history=get("history", 300),
+        var_threshold=get("var_threshold", 32),
+        audio_enabled=get("audio_enabled", False),
+        audio_rms_threshold=get("audio_rms_threshold", 2500.0),
+        audio_cooldown=get("audio_cooldown", 5.0),
     )
 
 
-def load_config(settings_files: list[str] | None = None) -> AppConfig:
-    files = settings_files or ["settings.toml", ".secrets.toml"]
-    settings = Dynaconf(settings_files=files, environments=True)
+def build_stream_configs(args):
+    if args.rtsp_url:
+        # Ad-hoc mode: bypass settings.toml entirely, use one stream from CLI.
+        return [resolve_stream_config(args.name, args.rtsp_url)]
 
-    raw_streams = settings.get("streams") or []
-    streams: list[StreamConfig] = []
-    for item in raw_streams:
-        name = str(item["name"])
-        source_value = item.get("source")
-        source = str(source_value) if source_value is not None else None
-        fps = float(item.get("fps", 5.0))
-        reconnect_backoff_seconds = float(item.get("reconnect_backoff_seconds", 5.0))
-        raw_resolutions = item.get("resolutions") or [{"width": 640, "height": 360}]
-        resolutions = [_as_resolution(entry) for entry in raw_resolutions]
-        streams.append(
-            StreamConfig(
-                name=name,
-                source=source,
-                fps=fps,
-                reconnect_backoff_seconds=reconnect_backoff_seconds,
-                resolutions=resolutions,
-            )
-        )
+    configured = settings.get("streams", [])
 
-    motion_data = settings.get("motion") or {}
-    motion_defaults = MotionConfig()
-    motion = MotionConfig(
-        cooldown_seconds=float(motion_data.get("cooldown_seconds", motion_defaults.cooldown_seconds)),
-        warmup_frames=int(motion_data.get("warmup_frames", motion_defaults.warmup_frames)),
-        mog2_history=int(motion_data.get("mog2_history", motion_defaults.mog2_history)),
-        mog2_var_threshold=float(motion_data.get("mog2_var_threshold", motion_defaults.mog2_var_threshold)),
-        min_contour_area=int(motion_data.get("min_contour_area", motion_defaults.min_contour_area)),
-    )
+    if not configured:
+        raise SystemExit("no streams configured in settings.toml and no --rtsp-url given")
 
-    evidence_data = settings.get("evidence") or {}
-    evidence_defaults = EvidenceConfig()
-    evidence = EvidenceConfig(
-        root_dir=str(evidence_data.get("root_dir", evidence_defaults.root_dir)),
-        pre_seconds=float(evidence_data.get("pre_seconds", evidence_defaults.pre_seconds)),
-        post_seconds=float(evidence_data.get("post_seconds", evidence_defaults.post_seconds)),
-        output_fps=float(evidence_data.get("output_fps", evidence_defaults.output_fps)),
-    )
+    if args.only:
+        wanted = set(args.only.split(","))
+        configured = [s for s in configured if s.get("name") in wanted]
 
-    raw_alerts = settings.get("alerts") or []
-    alerts = [
-        AlertStep(
-            run=str(step["run"]),
-            async_step=bool(step.get("async", False)),
-            args=dict(step.get("args", {})),
-        )
-        for step in raw_alerts
-    ]
+        if not configured:
+            raise SystemExit(f"no configured streams match --only {args.only}")
 
-    return AppConfig(streams=streams, motion=motion, evidence=evidence, alerts=alerts)
+    stream_configs = []
+    for stream in configured:
+        if not stream.get("rtsp_url"):
+            raise SystemExit(f"stream '{stream.get('name')}' has no rtsp_url set (check .env)")
 
+        stream_configs.append(resolve_stream_config(stream["name"], stream["rtsp_url"], overrides=stream))
 
-def resolve_root(root_dir: str) -> Path:
-    path = Path(root_dir)
-    if path.is_absolute():
-        return path
-    return Path.cwd() / path
+    return stream_configs
