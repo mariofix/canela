@@ -1,0 +1,33 @@
+[default]
+
+[[default.streams]]
+name = "front-door"
+source = "0"
+fps = 5
+
+  [[default.streams.resolutions]]
+  width = 640
+  height = 360
+
+  [[default.streams.resolutions]]
+  width = 320
+  height = 180
+
+[default.motion]
+delta_threshold = 20
+motion_ratio_threshold = 0.02
+cooldown_seconds = 10
+
+[default.evidence]
+root_dir = "evidence"
+pre_seconds = 5
+post_seconds = 5
+output_fps = 10
+
+[[default.alerts]]
+run = "canela.sample_handlers::print_alert"
+async = false
+
+[[default.alerts]]
+run = "echo Motion detected at $CANELA_ALERT_PAYLOAD"
+async = true
