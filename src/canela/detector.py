@@ -236,6 +236,7 @@ def _detect_motion_mog2(
         scale_y = high_h / detect_h
 
         mask = feed.subtractor.apply(detect_frame)
+        _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
         mask = cv2.GaussianBlur(mask, (5, 5), 0)
         _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
 
@@ -291,6 +292,7 @@ def _open_detection_feeds(stream: StreamConfig, cv2: Any, motion_cfg: Any) -> li
             for feed in feeds:
                 feed.capture.release()
             raise RuntimeError(f"Unable to open stream: {stream.name} ({source})")
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         subtractor = cv2.createBackgroundSubtractorMOG2(
             history=motion_cfg.mog2_history,
             varThreshold=motion_cfg.mog2_var_threshold,
