@@ -18,12 +18,17 @@ Uses Dynaconf with `settings.toml` by default.
 ```toml
 [default]
 [[default.streams]]
-name = "front-door"
-source = "rtsp://camera.local/stream"
+name = "camera-model-a"
 fps = 5
   [[default.streams.resolutions]]
-  width = 640
-  height = 360
+  name = "high"
+  source = "rtsp://127.0.0.1:554/s0"
+  [[default.streams.resolutions]]
+  name = "mid"
+  source = "rtsp://127.0.0.1:554/s2"
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:554/s1"
 
 [default.evidence]
 pre_seconds = 5
@@ -40,6 +45,8 @@ async = false
 run = "bash /opt/alerts/pager.sh"
 async = true
 ```
+
+You can still use legacy single-source configs (`stream.source` + width/height resolutions); when `resolutions[*].source` is present, each resolution is read from its own RTSP endpoint.
 
 ## Run
 ```bash

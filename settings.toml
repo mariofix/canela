@@ -1,17 +1,32 @@
 [default]
 
 [[default.streams]]
-name = "front-door"
-source = "0"
+name = "camera-model-a"
 fps = 5
 
   [[default.streams.resolutions]]
-  width = 640
-  height = 360
+  name = "high"
+  source = "rtsp://127.0.0.1:554/s0"
 
   [[default.streams.resolutions]]
-  width = 320
-  height = 180
+  name = "mid"
+  source = "rtsp://127.0.0.1:554/s2"
+
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:554/s1"
+
+[[default.streams]]
+name = "camera-model-b"
+fps = 5
+
+  [[default.streams.resolutions]]
+  name = "high"
+  source = "rtsp://127.0.0.1:558/high"
+
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:558/low"
 
 [default.motion]
 delta_threshold = 20

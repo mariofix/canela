@@ -24,6 +24,13 @@ class FrameSample:
     frame: np.ndarray
 
 
+@dataclass(slots=True)
+class DetectionFeed:
+    resolution: Resolution
+    source: str
+    capture: Any
+
+
 class MotionDetectorService:
     def __init__(self, config: AppConfig):
         self._config = config
@@ -40,9 +47,8 @@ class MotionDetectorService:
 
     async def _run_stream(self, stream: StreamConfig, pipeline: AlertPipeline) -> None:
         cv2 = import_cv2()
-        capture = cv2.VideoCapture(_parse_source(stream.source))
-        if not capture.isOpened():
-            raise RuntimeError(f"Unable to open stream: {stream.name} ({stream.source})")
+        feeds = _open_detection_feeds(stream, cv2)
+        primary_feed = feeds[0]
 
         frame_interval = 1.0 / max(stream.fps, 0.1)
         max_pre_frames = max(1, int(stream.fps * self._config.evidence.pre_seconds))
@@ -54,23 +60,31 @@ class MotionDetectorService:
         )
 
         last_detection_at: datetime | None = None
-        previous_frames: dict[tuple[int, int], np.ndarray] = {}
+        previous_frames: dict[tuple[str, int, int], np.ndarray] = {}
         processed_frames = 0
 
         try:
             while True:
-                ok, frame = capture.read()
-                if not ok:
+                detection_frames: list[tuple[DetectionFeed, np.ndarray]] = []
+                primary_frame: np.ndarray | None = None
+                for feed in feeds:
+                    ok, frame = feed.capture.read()
+                    if not ok:
+                        continue
+                    if feed is primary_feed:
+                        primary_frame = frame
+                    detection_frames.append((feed, frame))
+
+                if primary_frame is None:
                     await asyncio.sleep(frame_interval)
                     continue
 
                 now = datetime.now(UTC)
-                pre_buffer.append(FrameSample(timestamp=now, frame=frame.copy()))
+                pre_buffer.append(FrameSample(timestamp=now, frame=primary_frame.copy()))
                 processed_frames += 1
 
                 triggered_resolution, score = _detect_motion(
-                    frame,
-                    stream.resolutions,
+                    detection_frames,
                     previous_frames,
                     self._config.motion.delta_threshold,
                     self._config.motion.motion_ratio_threshold,
@@ -89,16 +103,17 @@ class MotionDetectorService:
 
                 last_detection_at = now
                 event_frames = [sample.frame for sample in pre_buffer]
-                post_frames = await self._collect_post_frames(capture, frame_interval, stream.fps)
+                post_frames = await self._collect_post_frames(primary_feed.capture, frame_interval, stream.fps)
                 event_frames.extend(post_frames)
 
                 event_dir = evidence_writer.write_event(
                     stream_name=stream.name,
                     detected_at=now,
                     metadata={
+                        "trigger_source": triggered_resolution.source or stream.source or "",
                         "trigger_resolution": {
-                            "width": triggered_resolution.width,
-                            "height": triggered_resolution.height,
+                            "width": triggered_resolution.width or primary_frame.shape[1],
+                            "height": triggered_resolution.height or primary_frame.shape[0],
                         },
                         "motion_score": score,
                         "pre_seconds": self._config.evidence.pre_seconds,
@@ -115,7 +130,8 @@ class MotionDetectorService:
                 await pipeline.run(payload)
                 await asyncio.sleep(frame_interval)
         finally:
-            capture.release()
+            for feed in feeds:
+                feed.capture.release()
 
     async def _collect_post_frames(self, capture: Any, frame_interval: float, fps: float) -> list[np.ndarray]:
         post_frame_count = max(0, int(fps * self._config.evidence.post_seconds))
@@ -134,17 +150,20 @@ class MotionDetectorService:
 
 
 def _detect_motion(
-    frame: np.ndarray,
-    resolutions: list[Resolution],
-    previous_frames: dict[tuple[int, int], np.ndarray],
+    detection_frames: list[tuple[DetectionFeed, np.ndarray]],
+    previous_frames: dict[tuple[str, int, int], np.ndarray],
     delta_threshold: float,
     motion_ratio_threshold: float,
     cv2: Any,
 ) -> tuple[Resolution | None, float]:
-    for resolution in resolutions:
-        resized = cv2.resize(frame, (resolution.width, resolution.height))
-        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        key = (resolution.width, resolution.height)
+    for feed, frame in detection_frames:
+        resolution = feed.resolution
+        if resolution.width is not None and resolution.height is not None:
+            processed = cv2.resize(frame, (resolution.width, resolution.height))
+        else:
+            processed = frame
+        gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
+        key = (feed.source, gray.shape[1], gray.shape[0])
 
         prev_gray = previous_frames.get(key)
         previous_frames[key] = gray
@@ -165,3 +184,23 @@ def _parse_source(source: str) -> str | int:
 
 def _is_in_warmup(processed_frames: int, warmup_frames: int) -> bool:
     return processed_frames <= max(0, warmup_frames)
+
+
+def _resolve_feed_source(stream: StreamConfig, resolution: Resolution) -> str:
+    source = resolution.source or stream.source
+    if not source:
+        raise ValueError(
+            f"Stream '{stream.name}' requires either stream.source or resolutions[*].source"
+        )
+    return source
+
+
+def _open_detection_feeds(stream: StreamConfig, cv2: Any) -> list[DetectionFeed]:
+    feeds: list[DetectionFeed] = []
+    for resolution in stream.resolutions:
+        source = _resolve_feed_source(stream, resolution)
+        capture = cv2.VideoCapture(_parse_source(source))
+        if not capture.isOpened():
+            raise RuntimeError(f"Unable to open stream: {stream.name} ({source})")
+        feeds.append(DetectionFeed(resolution=resolution, source=source, capture=capture))
+    return feeds

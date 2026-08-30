@@ -9,16 +9,18 @@ from dynaconf import Dynaconf
 
 @dataclass(slots=True)
 class Resolution:
-    width: int
-    height: int
+    width: int | None = None
+    height: int | None = None
+    source: str | None = None
+    name: str | None = None
 
 
 @dataclass(slots=True)
 class StreamConfig:
     name: str
-    source: str
+    source: str | None = None
     fps: float = 5.0
-    resolutions: list[Resolution] = field(default_factory=lambda: [Resolution(640, 360)])
+    resolutions: list[Resolution] = field(default_factory=lambda: [Resolution(width=640, height=360)])
 
 
 @dataclass(slots=True)
@@ -53,7 +55,16 @@ class AppConfig:
 
 
 def _as_resolution(value: dict[str, Any]) -> Resolution:
-    return Resolution(width=int(value["width"]), height=int(value["height"]))
+    width = value.get("width")
+    height = value.get("height")
+    source = value.get("source")
+    name = value.get("name")
+    return Resolution(
+        width=int(width) if width is not None else None,
+        height=int(height) if height is not None else None,
+        source=str(source) if source is not None else None,
+        name=str(name) if name is not None else None,
+    )
 
 
 def load_config(settings_files: list[str] | None = None) -> AppConfig:
@@ -64,7 +75,8 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
     streams: list[StreamConfig] = []
     for item in raw_streams:
         name = str(item["name"])
-        source = str(item["source"])
+        source_value = item.get("source")
+        source = str(source_value) if source_value is not None else None
         fps = float(item.get("fps", 5.0))
         raw_resolutions = item.get("resolutions") or [{"width": 640, "height": 360}]
         resolutions = [_as_resolution(entry) for entry in raw_resolutions]

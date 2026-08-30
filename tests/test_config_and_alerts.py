@@ -86,3 +86,36 @@ warmup_frames = 45
     assert config.motion.warmup_frames == 45
     assert config.alerts[0].run == "pkg.module::fn"
     assert config.alerts[0].async_step is True
+
+
+def test_load_config_supports_resolution_specific_rtsp_sources(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.toml"
+    settings.write_text(
+        """
+[default]
+
+[[default.streams]]
+name = "camera-1"
+fps = 5
+  [[default.streams.resolutions]]
+  name = "high"
+  source = "rtsp://127.0.0.1:554/s0"
+  [[default.streams.resolutions]]
+  name = "mid"
+  source = "rtsp://127.0.0.1:554/s2"
+  [[default.streams.resolutions]]
+  name = "low"
+  source = "rtsp://127.0.0.1:554/s1"
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config([str(settings)])
+
+    stream = config.streams[0]
+    assert stream.source is None
+    assert [res.source for res in stream.resolutions] == [
+        "rtsp://127.0.0.1:554/s0",
+        "rtsp://127.0.0.1:554/s2",
+        "rtsp://127.0.0.1:554/s1",
+    ]
