@@ -235,6 +235,9 @@ def _open_detection_feeds(stream: StreamConfig, cv2: Any) -> list[DetectionFeed]
         source = _resolve_feed_source(stream, resolution)
         capture = cv2.VideoCapture(_parse_source(source))
         if not capture.isOpened():
+            capture.release()
+            for feed in feeds:
+                feed.capture.release()
             raise RuntimeError(f"Unable to open stream: {stream.name} ({source})")
         feeds.append(DetectionFeed(resolution=resolution, source=source, capture=capture))
     return feeds
