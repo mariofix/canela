@@ -30,6 +30,9 @@ class MotionConfig:
     motion_ratio_threshold: float = 0.02
     cooldown_seconds: float = 10.0
     warmup_frames: int = 30
+    mog2_history: int = 300
+    mog2_var_threshold: float = 32.0
+    min_contour_area: int = 500
 
 
 @dataclass(slots=True)
@@ -101,6 +104,9 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
         ),
         cooldown_seconds=float(motion_data.get("cooldown_seconds", motion_defaults.cooldown_seconds)),
         warmup_frames=int(motion_data.get("warmup_frames", motion_defaults.warmup_frames)),
+        mog2_history=int(motion_data.get("mog2_history", motion_defaults.mog2_history)),
+        mog2_var_threshold=float(motion_data.get("mog2_var_threshold", motion_defaults.mog2_var_threshold)),
+        min_contour_area=int(motion_data.get("min_contour_area", motion_defaults.min_contour_area)),
     )
 
     evidence_data = settings.get("evidence") or {}
