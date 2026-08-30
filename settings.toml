@@ -3,6 +3,7 @@
 [[default.streams]]
 name = "camera-model-a"
 fps = 5
+reconnect_backoff_seconds = 5
 
   [[default.streams.resolutions]]
   name = "high"

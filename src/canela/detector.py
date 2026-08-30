@@ -17,8 +17,6 @@ from .evidence import EvidenceWriter
 
 logger = logging.getLogger(__name__)
 
-RECONNECT_DELAY_SECONDS = 5.0
-
 
 @dataclass(slots=True)
 class FrameSample:
@@ -87,12 +85,13 @@ class MotionDetectorService:
                     detection_frames.append((feed, frame))
 
                 if primary_frame is None:
+                    retry_delay = stream.reconnect_backoff_seconds
                     logger.debug(
                         "Primary feed unavailable for stream '%s'; retrying in %.1f seconds.",
                         stream.name,
-                        RECONNECT_DELAY_SECONDS,
+                        retry_delay,
                     )
-                    await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+                    await asyncio.sleep(retry_delay)
                     continue
 
                 now = datetime.now(UTC)

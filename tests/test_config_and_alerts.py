@@ -81,6 +81,7 @@ warmup_frames = 45
 
     assert len(config.streams) == 1
     assert len(config.streams[0].resolutions) == 2
+    assert config.streams[0].reconnect_backoff_seconds == 5.0
     assert config.evidence.pre_seconds == 7
     assert config.evidence.post_seconds == 8
     assert config.motion.warmup_frames == 45
@@ -97,6 +98,7 @@ def test_load_config_supports_resolution_specific_rtsp_sources(tmp_path: Path) -
 [[default.streams]]
 name = "camera-1"
 fps = 5
+reconnect_backoff_seconds = 12
   [[default.streams.resolutions]]
   name = "high"
   source = "rtsp://127.0.0.1:554/s0"
@@ -114,6 +116,7 @@ fps = 5
 
     stream = config.streams[0]
     assert stream.source is None
+    assert stream.reconnect_backoff_seconds == 12.0
     assert [res.source for res in stream.resolutions] == [
         "rtsp://127.0.0.1:554/s0",
         "rtsp://127.0.0.1:554/s2",
