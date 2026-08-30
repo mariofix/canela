@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from canela.config import Resolution
-from canela.detector import _detect_motion, _parse_source
+from canela.detector import _detect_motion, _is_in_warmup, _parse_source
 
 
 class _FakeCv2:
@@ -45,3 +45,10 @@ def test_detect_motion_uses_all_configured_resolutions() -> None:
 
     assert resolution == Resolution(320, 180)
     assert score == 1.0
+
+
+def test_warmup_frame_gate() -> None:
+    assert _is_in_warmup(1, 30) is True
+    assert _is_in_warmup(30, 30) is True
+    assert _is_in_warmup(31, 30) is False
+    assert _is_in_warmup(1, 0) is False

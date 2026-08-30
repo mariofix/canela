@@ -29,6 +29,9 @@ fps = 5
 pre_seconds = 5
 post_seconds = 5
 
+[default.motion]
+warmup_frames = 30
+
 [[default.alerts]]
 run = "awesome_lib.awesome_stuff::process"
 async = false

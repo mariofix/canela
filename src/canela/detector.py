@@ -55,6 +55,7 @@ class MotionDetectorService:
 
         last_detection_at: datetime | None = None
         previous_frames: dict[tuple[int, int], np.ndarray] = {}
+        processed_frames = 0
 
         try:
             while True:
@@ -65,6 +66,7 @@ class MotionDetectorService:
 
                 now = datetime.now(UTC)
                 pre_buffer.append(FrameSample(timestamp=now, frame=frame.copy()))
+                processed_frames += 1
 
                 triggered_resolution, score = _detect_motion(
                     frame,
@@ -74,6 +76,9 @@ class MotionDetectorService:
                     self._config.motion.motion_ratio_threshold,
                     cv2,
                 )
+                if _is_in_warmup(processed_frames, self._config.motion.warmup_frames):
+                    await asyncio.sleep(frame_interval)
+                    continue
                 if not triggered_resolution:
                     await asyncio.sleep(frame_interval)
                     continue
@@ -156,3 +161,7 @@ def _detect_motion(
 
 def _parse_source(source: str) -> str | int:
     return int(source) if source.isdigit() else source
+
+
+def _is_in_warmup(processed_frames: int, warmup_frames: int) -> bool:
+    return processed_frames <= max(0, warmup_frames)

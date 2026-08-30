@@ -17,6 +17,7 @@ fps = 5
 delta_threshold = 20
 motion_ratio_threshold = 0.02
 cooldown_seconds = 10
+warmup_frames = 30
 
 [default.evidence]
 root_dir = "evidence"

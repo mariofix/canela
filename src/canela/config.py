@@ -26,6 +26,7 @@ class MotionConfig:
     delta_threshold: float = 20.0
     motion_ratio_threshold: float = 0.02
     cooldown_seconds: float = 10.0
+    warmup_frames: int = 30
 
 
 @dataclass(slots=True)
@@ -77,6 +78,7 @@ def load_config(settings_files: list[str] | None = None) -> AppConfig:
             motion_data.get("motion_ratio_threshold", motion_defaults.motion_ratio_threshold)
         ),
         cooldown_seconds=float(motion_data.get("cooldown_seconds", motion_defaults.cooldown_seconds)),
+        warmup_frames=int(motion_data.get("warmup_frames", motion_defaults.warmup_frames)),
     )
 
     evidence_data = settings.get("evidence") or {}

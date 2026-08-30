@@ -70,6 +70,9 @@ async = true
 [default.evidence]
 pre_seconds = 7
 post_seconds = 8
+
+[default.motion]
+warmup_frames = 45
 """,
         encoding="utf-8",
     )
@@ -80,5 +83,6 @@ post_seconds = 8
     assert len(config.streams[0].resolutions) == 2
     assert config.evidence.pre_seconds == 7
     assert config.evidence.post_seconds == 8
+    assert config.motion.warmup_frames == 45
     assert config.alerts[0].run == "pkg.module::fn"
     assert config.alerts[0].async_step is True
